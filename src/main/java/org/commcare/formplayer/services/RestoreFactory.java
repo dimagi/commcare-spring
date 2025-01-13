@@ -199,12 +199,12 @@ public class RestoreFactory {
     public UserSqlSandbox performTimedSync() throws SyncRestoreException {
         return performTimedSync(true, false, false);
     }
-    public UserSqlSandbox performTimedSync(boolean shouldPurge, boolean skipFixtures, boolean isResponseTo412)
+    public UserSqlSandbox performTimedSync(boolean shouldPurge, boolean isResponseTo412)
             throws SyncRestoreException {
-        return performTimedSync(shouldPurge, skipFixtures, isResponseTo412, new HashMap<>());
+        return performTimedSync(shouldPurge, isResponseTo412, new HashMap<>());
     }
 
-    public UserSqlSandbox performTimedSync(boolean shouldPurge, boolean skipFixtures, boolean isResponseTo412, Map<String, String> extraTags)
+    public UserSqlSandbox performTimedSync(boolean shouldPurge, boolean isResponseTo412, Map<String, String> extraTags)
             throws SyncRestoreException {
         // create extras to send to category timing helper
         extraTags.put(Constants.DOMAIN_TAG, domain);
@@ -217,10 +217,10 @@ public class RestoreFactory {
         }
         UserSqlSandbox sandbox;
         try {
-            sandbox = restoreUser(skipFixtures);
+            sandbox = restoreUser();
         } catch (HttpClientErrorException e) {
             if (e.getStatusCode().value() == 412) {
-                return handle412Sync(shouldPurge, skipFixtures);
+                return handle412Sync(shouldPurge);
             }
             throw e;
         }
@@ -240,7 +240,7 @@ public class RestoreFactory {
                 FormplayerSentry.captureException(e, SentryLevel.WARNING);
                 // if we have not already, do a fresh sync to try and resolve state
                 if (!isResponseTo412) {
-                    handle412Sync(shouldPurge, skipFixtures);
+                    handle412Sync(shouldPurge);
                 } else {
                     // there are cycles even after a fresh sync
                     throw new SyncRestoreException(e);
@@ -257,12 +257,12 @@ public class RestoreFactory {
         return sandbox;
     }
 
-    private UserSqlSandbox handle412Sync(boolean shouldPurge, boolean skipFixtures) throws SyncRestoreException {
+    private UserSqlSandbox handle412Sync(boolean shouldPurge) throws SyncRestoreException {
         getSQLiteDB().deleteDatabaseFile();
         // this line has the effect of clearing the sync token
         // from the restore URL that's used
         sqLiteDB = new UserDB(domain, scrubbedUsername, asUsername);
-        return performTimedSync(shouldPurge, skipFixtures, true);
+        return performTimedSync(shouldPurge, true);
     }
 
     // This function will attempt to get the user DBs without syncing if they exist, sync if not
@@ -278,7 +278,7 @@ public class RestoreFactory {
     }
 
     @Trace
-    private UserSqlSandbox restoreUser(boolean skipFixtures) throws SyncRestoreException {
+    private UserSqlSandbox restoreUser() throws SyncRestoreException {
         PrototypeFactory.setStaticHasher(new ClassNameHasher());
 
         // create extras to send to category timing helper
@@ -291,7 +291,7 @@ public class RestoreFactory {
             try {
                 UserSqlSandbox sandbox = getSqlSandbox();
                 FormplayerTransactionParserFactory factory = new FormplayerTransactionParserFactory(sandbox, true);
-                InputStream restoreStream = getRestoreXml(skipFixtures);
+                InputStream restoreStream = getRestoreXml();
 
                 SimpleTimer parseTimer = new SimpleTimer();
                 parseTimer.start();
@@ -437,9 +437,9 @@ public class RestoreFactory {
     }
 
     @Trace
-    public InputStream getRestoreXml(boolean skipFixtures) {
+    public InputStream getRestoreXml() {
         ensureValidParameters();
-        URI url = getRestoreUrl(skipFixtures);
+        URI url = getRestoreUrl();
         recordSentryData(url.toString());
         InputStream restoreStream = getRestoreXmlHelper(url);
         setLastSyncTime();
@@ -621,13 +621,13 @@ public class RestoreFactory {
         return Collections.singletonMap("X-CommCareHQ-Origin-Token", originToken);
     }
 
-    public URI getRestoreUrl(boolean skipFixtures) {
+    public URI getRestoreUrl() {
         // TODO: remove timing once the state hash rollout is complete
         return categoryTimingHelper.timed(Constants.TimingCategories.BUILD_RESTORE_URL, () -> {
             if (caseId != null) {
                 return getCaseRestoreUrl();
             }
-            return getUserRestoreUrl(skipFixtures);
+            return getUserRestoreUrl();
         });
     }
 
@@ -660,7 +660,7 @@ public class RestoreFactory {
         return UriComponentsBuilder.fromHttpUrl(caseRestoreUrl).buildAndExpand(domain, caseId).toUri();
     }
 
-    public URI getUserRestoreUrl(boolean skipFixtures) {
+    public URI getUserRestoreUrl() {
         UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(restoreUrl).encode();
 
         Map<String, String> params = new LinkedHashMap<>();
@@ -689,9 +689,6 @@ public class RestoreFactory {
         } else if (getHqAuth() == null && username != null) {
             // HQ requesting to force a sync for a user
             params.put("as", username);
-        }
-        if (skipFixtures) {
-            params.put("skip_fixtures", "true");
         }
 
         // add the params to the query builder as templates

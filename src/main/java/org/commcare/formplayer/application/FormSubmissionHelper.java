@@ -385,8 +385,7 @@ public class FormSubmissionHelper {
             //Need to do before end of form nav triggers, since the new data might change the
             //validity of the form
 
-            boolean skipFixtures = storageFactory.getPropertyManager().skipFixturesAfterSubmit();
-            restoreFactory.performTimedSync(true, skipFixtures, false);
+            restoreFactory.performTimedSync(true, false);
         }
         return context.success();
     }
