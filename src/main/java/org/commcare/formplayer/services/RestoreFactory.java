@@ -273,7 +273,7 @@ public class RestoreFactory {
             return getSqlSandbox();
         } else {
             getSQLiteDB().createDatabaseFolder();
-            return performTimedSync(false, false, false);
+            return performTimedSync(true, false, false);
         }
     }
 
